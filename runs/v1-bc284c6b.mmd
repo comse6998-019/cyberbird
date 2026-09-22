@@ -1,0 +1,27 @@
+sequenceDiagram
+    autonumber
+    participant C as Controller<br/>(model decides)
+    participant R as Runtime<br/>(executes, refuses, checks)
+    participant W as Workspace<br/>(pinned fixture)
+
+    Note over C: 0s · in=914 out=49
+    C->>R: read_file(path=testcode/BenchmarkTest00283.py)
+    R->>W: read_file
+    W-->>R: 1665 chars
+    R-->>C: observation
+    Note over C: 20s · in=1464 out=176
+    C->>R: read_file(path=helpers/db_sqlite.py)
+    R->>W: read_file
+    W-->>R: 1826 chars
+    R-->>C: observation
+    Note over C: 40s · in=2196 out=154
+    C->>R: edit(path=testcode/BenchmarkTest00283.py, ol…)
+    R->>W: edit
+    W-->>R: 47 chars
+    R-->>C: observation
+    Note over C: 49s · in=2381 out=64
+    C->>R: no tool call — finished
+    R->>W: rescan
+    Note over R: applies=✓ touches_line=✓ rescan_clean=✓
+    Note over R: routed → accepted (runtime)
+    Note over C,W: ACCEPTED

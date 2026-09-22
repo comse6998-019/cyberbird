@@ -1,0 +1,71 @@
+sequenceDiagram
+    autonumber
+    participant P as Planner<br/>(model plans)
+    participant C as Controller<br/>(model decides)
+    participant R as Runtime<br/>(executes, refuses, checks)
+    participant W as Workspace<br/>(pinned fixture)
+    participant V as Validator<br/>(model judges)
+
+    Note over P: 0s · in=625 out=1402
+    P->>C: plan — 5 steps
+    Note over C: 15s · in=1422 out=51
+    C->>R: read_file(path=testcode/BenchmarkTest01179.py)
+    R->>W: read_file
+    W-->>R: 1628 chars
+    R-->>C: observation
+    Note over C: 52s · in=1938 out=237
+    C->>R: read_file(path=helpers/utils.py)
+    R->>W: read_file
+    W-->>R: 2280 chars
+    R-->>C: observation
+    Note over C: 222s · in=2914 out=1160
+    C->>R: edit(path=testcode/BenchmarkTest01179.py, ol…)
+    R->>W: edit
+    W-->>R: 47 chars
+    R-->>C: observation
+    Note over C: 247s · in=4105 out=183
+    C->>R: edit(path=testcode/BenchmarkTest01179.py, ol…)
+    R->>W: edit
+    W-->>R: 47 chars
+    R-->>C: observation
+    Note over C: 257s · in=4319 out=55
+    C->>R: read_file(path=testcode/BenchmarkTest01179.py)
+    R->>W: read_file
+    W-->>R: 1856 chars
+    R-->>C: observation
+    Note over C: 312s · in=4896 out=275
+    C->>R: no tool call — finished
+    R->>W: rescan
+    Note over R: applies=✓ touches_line=✗ rescan_clean=✗
+    Note over R: routed → controller (runtime)
+    Note over C: 421s · in=5286 out=513
+    C->>R: read_file(path=testcode/BenchmarkTest01179.py)
+    R->>W: read_file
+    W-->>R: 1856 chars
+    R-->>C: observation
+    Note over C: 518s · in=6321 out=564
+    C->>R: edit(path=testcode/BenchmarkTest01179.py, ol…)
+    R->>W: edit
+    W-->>R: 47 chars
+    R-->>C: observation
+    Note over C: 532s · in=6916 out=90
+    C->>R: read_file(path=testcode/BenchmarkTest01179.py)
+    R->>W: read_file
+    W-->>R: 1857 chars
+    R-->>C: observation
+    Note over C: 568s · in=7529 out=164
+    C->>R: no tool call — finished
+    R->>W: rescan
+    Note over R: applies=✓ touches_line=✗ rescan_clean=✓
+    Note over R: routed → controller (runtime)
+    Note over C: 1347s · in=7765 out=5606
+    C->>R: read_file(path=testcode/BenchmarkTest01179.py, st…)
+    R->>W: read_file
+    W-->>R: 557 chars
+    R-->>C: observation
+    Note over C: 1362s · in=13550 out=80
+    C->>R: read_file(end=31, path=testcode/BenchmarkTest0117…)
+    R->>W: read_file
+    W-->>R: 1081 chars
+    R-->>C: observation
+    Note over P,V: ERROR

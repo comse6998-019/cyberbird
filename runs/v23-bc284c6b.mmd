@@ -1,0 +1,42 @@
+sequenceDiagram
+    autonumber
+    participant P as Planner<br/>(model plans)
+    participant C as Controller<br/>(model decides)
+    participant R as Runtime<br/>(executes, refuses, checks)
+    participant W as Workspace<br/>(pinned fixture)
+    participant V as Validator<br/>(model judges)
+
+    Note over P: 0s · in=571 out=1787
+    P->>C: plan — 4 steps
+    Note over C: 29s · in=1284 out=51
+    C->>R: read_file(path=testcode/BenchmarkTest00283.py)
+    R->>W: read_file
+    W-->>R: 1665 chars
+    R-->>C: observation
+    Note over C: 69s · in=1836 out=182
+    C->>R: search(pattern=def get_connection|def results,…)
+    R->>W: search
+    W-->>R: 99 chars
+    R-->>C: observation
+    Note over C: 79s · in=2064 out=51
+    C->>R: read_file(path=helpers/db_sqlite.py)
+    R->>W: read_file
+    W-->>R: 1826 chars
+    R-->>C: observation
+    Note over C: 185s · in=2671 out=554
+    C->>R: edit(path=testcode/BenchmarkTest00283.py, ol…)
+    R->>W: edit
+    W-->>R: 47 chars
+    R-->>C: observation
+    Note over C: 199s · in=3256 out=61
+    C->>R: no tool call — finished
+    R->>W: rescan
+    Note over R: applies=✓ touches_line=✓ rescan_clean=✓
+    R->>V: candidate patch + the three checks
+    Note over V: 466s · in=1011 out=1069
+    V-->>R: accepted — decided by model
+    Note over V: The f-string interpolation of `bar` directly into the SQL t…
+    Note over V: The logical query is unchanged: both versions select `usern…
+    Note over V: Only the two lines that constitute the cause (the SQL strin…
+    Note over V: The `helpers.db_sqlite.results(cur, sql)` call still receiv…
+    Note over P,V: ACCEPTED
