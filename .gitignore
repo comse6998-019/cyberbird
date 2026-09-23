@@ -5,3 +5,8 @@ __pycache__/
 .DS_Store
 .ipynb_checkpoints/
 .env
+
+# new run output; lecture examples live in lectures/<lec>/runs/
+/runs/
+*.egg-info/
+build/

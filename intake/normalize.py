@@ -25,7 +25,7 @@ import re
 # carrying this prefix; stripping it recovers the published id.
 LOCAL_CONFIG_PREFIX = "intake.rules."
 
-FIXTURE_ROOT = "app/"
+FIXTURE_ROOT = "fixture/"
 
 _SEVERITY = {
     "bandit":  {"HIGH": "high", "MEDIUM": "medium", "LOW": "low"},

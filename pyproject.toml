@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cyberbird"
+version = "0.2.0"
+description = "A vulnerability-patching agent, built one lecture at a time (COMSE6998-019)."
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1",
+    "colorama",
+    "langchain",
+    "langchain-core",
+    "langchain-ollama",
+    "langgraph",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+cyberbird = "cyberbird.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["cyberbird*", "intake*"]
+
+[tool.setuptools.package-data]
+"cyberbird.reactive.prompts" = ["*.md"]
+"cyberbird.plan_and_validation.prompts" = ["*.md"]
+"intake" = ["rules/*.yml"]
+
+[tool.pytest.ini_options]
+testpaths = ["intake/tests", "cyberbird/tests"]

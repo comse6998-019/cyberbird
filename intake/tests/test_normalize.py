@@ -85,7 +85,7 @@ def test_unmapped_cwe_falls_through_to_other():
 def test_normalize_bandit_record_has_exactly_the_contract_fields():
     doc = {"results": [{
         "test_id": "B608",
-        "filename": "app/testcode/BenchmarkTest00283.py",
+        "filename": "fixture/testcode/BenchmarkTest00283.py",
         "line_number": 46,
         "col_offset": 8,
         "issue_severity": "MEDIUM",
@@ -95,7 +95,7 @@ def test_normalize_bandit_record_has_exactly_the_contract_fields():
     (alert,) = n.normalize_bandit(doc)
     assert set(alert) == {"alert_id", "rule", "file", "line", "message", "severity", "category"}
     assert alert["rule"] == "bandit:B608"
-    assert alert["file"] == "testcode/BenchmarkTest00283.py"   # app/ prefix stripped
+    assert alert["file"] == "testcode/BenchmarkTest00283.py"   # fixture/ prefix stripped
     assert alert["line"] == 46
     assert alert["severity"] == "medium"
     assert alert["category"] == "sqli"
@@ -106,7 +106,7 @@ def test_normalize_bandit_record_has_exactly_the_contract_fields():
 def test_normalize_semgrep_record():
     doc = {"results": [{
         "check_id": "intake.rules.python.lang.security.audit.dangerous-system-call",
-        "path": "app/testcode/BenchmarkTest00001.py",
+        "path": "fixture/testcode/BenchmarkTest00001.py",
         "start": {"line": 55, "col": 11},
         "extra": {
             "severity": "ERROR",

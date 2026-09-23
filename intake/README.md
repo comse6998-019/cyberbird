@@ -7,17 +7,17 @@ normalize → categorize → emit. No model call happens anywhere in it.
 ## Regenerate
 
 ```sh
-.venv/bin/python -m intake.build_findings     # scans/*.json -> findings.json
-.venv/bin/python -m pytest intake/tests -q
+cyberbird intake                  # data/scans/*.json -> data/findings.json
+pytest intake/tests -q
 ```
 
 To re-scan from scratch (a few minutes):
 
 ```sh
-bandit -r app/ -f json -o scans/bandit.json -q
+bandit -r fixture/ -f json -o data/scans/bandit.json -q
 semgrep scan --config intake/rules/python.yml \
              --config intake/rules/owasp-top-ten.yml \
-             --json -o scans/semgrep.json --metrics=off app/
+             --json -o data/scans/semgrep.json --metrics=off fixture/
 ```
 
 ## The alert contract
@@ -56,9 +56,9 @@ rather than being forced into a nearest fit.
 
 ## Reproducibility
 
-`findings.json` records the pinned commit, both scanner versions, and the
+`data/findings.json` records the pinned commit, both scanner versions, and the
 sha256 of each vendored Semgrep ruleset. The rulesets are vendored rather than
 fetched from the registry at scan time, so the run does not drift when the
 registry moves.
 
-`findings.json` is derived. Don't hand-edit it; re-run the builder.
+`data/findings.json` is derived. Don't hand-edit it; re-run the builder.

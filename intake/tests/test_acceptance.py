@@ -9,7 +9,7 @@ import pathlib
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
-FINDINGS = ROOT / "findings.json"
+FINDINGS = ROOT / "data" / "findings.json"
 
 pytestmark = pytest.mark.skipif(
     not FINDINGS.exists(), reason="run `python -m intake.build_findings` first")
@@ -43,8 +43,8 @@ def test_answer_key_is_not_reachable_from_the_fixture():
     for name in ("expectedresults-0.1.csv",
                  "results/BenchmarkPython-Bandit.sarif",
                  "results/Benchmark-Bearer-v1.51.1.json"):
-        assert not (ROOT / "app" / name).exists(), f"{name} still readable in app/"
-        assert (ROOT / "ground-truth" / pathlib.Path(name).name).exists()
+        assert not (ROOT / "fixture" / name).exists(), f"{name} still readable in fixture/"
+        assert (ROOT / "data" / "ground-truth" / pathlib.Path(name).name).exists()
 
 
 def test_every_alert_carries_the_full_contract(doc):
@@ -66,3 +66,12 @@ def test_counts_are_internally_consistent(doc):
     assert total == doc["totals"]["alerts"]
     for name, cat in doc["categories"].items():
         assert cat["count"] == len(cat["alerts"])
+
+
+def test_builder_writes_where_it_is_told(tmp_path):
+    """`main` takes its own argv, so a wrapper can forward arguments to it."""
+    from intake import build_findings
+
+    out = tmp_path / "findings.json"
+    assert build_findings.main(["-o", str(out)]) == 0
+    assert json.loads(out.read_text())["totals"]["alerts"] == 720

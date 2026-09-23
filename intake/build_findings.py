@@ -1,12 +1,13 @@
 """Assemble findings.json from the raw scanner output.
 
-Reads scans/bandit.json and scans/semgrep.json, normalizes both into the one
-alert contract, groups by the fixture's category vocabulary, and writes a
-single document with enough provenance to reproduce the run.
+Reads data/scans/bandit.json and data/scans/semgrep.json, normalizes both
+into the one alert contract, groups by the fixture's category vocabulary, and
+writes a single document with enough provenance to reproduce the run.
 
     python -m intake.build_findings
 
-findings.json is derived and should never be hand-edited; re-run this instead.
+data/findings.json is derived and should never be hand-edited; re-run this
+instead.
 """
 from __future__ import annotations
 
@@ -27,7 +28,7 @@ REPO = "https://github.com/OWASP-Benchmark/BenchmarkPython"
 COMMIT = "f1291485808b66e20ddb6b01b10dc71b3df8c8ba"
 PINNED_FILE_COUNT = 2540
 
-# Moved to ground-truth/ so the agent cannot read the answers out of the fixture.
+# Moved to data/ground-truth/ so the agent cannot read the answers out of the fixture.
 STRIPPED = [
     "expectedresults-0.1.csv",
     "results/BenchmarkPython-Bandit.sarif",
@@ -61,8 +62,8 @@ def _sha256(path: pathlib.Path) -> str:
 
 
 def build() -> dict:
-    bandit_raw = json.loads((ROOT / "scans/bandit.json").read_text())
-    semgrep_raw = json.loads((ROOT / "scans/semgrep.json").read_text())
+    bandit_raw = json.loads((ROOT / "data/scans/bandit.json").read_text())
+    semgrep_raw = json.loads((ROOT / "data/scans/semgrep.json").read_text())
 
     alerts = normalize.normalize_bandit(bandit_raw) + normalize.normalize_semgrep(semgrep_raw)
     alerts.sort(key=lambda a: (a["file"], a["line"], a["rule"]))
@@ -91,14 +92,14 @@ def build() -> dict:
             {
                 "name": "bandit",
                 "version": _tool_version(["bandit", "--version"]),
-                "invocation": "bandit -r app/ -f json -o scans/bandit.json",
+                "invocation": "bandit -r fixture/ -f json -o data/scans/bandit.json",
             },
             {
                 "name": "semgrep",
                 "version": _tool_version(["semgrep", "--version"]),
                 "invocation": ("semgrep scan --config intake/rules/python.yml "
                                "--config intake/rules/owasp-top-ten.yml --json "
-                               "--metrics=off app/"),
+                               "--metrics=off fixture/"),
                 "rulesets": [
                     {"file": f, "source": url,
                      "sha256": _sha256(ROOT / "intake/rules" / f)}
@@ -131,10 +132,10 @@ def build() -> dict:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("-o", "--out", default=str(ROOT / "findings.json"))
-    args = ap.parse_args()
+    ap.add_argument("-o", "--out", default=str(ROOT / "data" / "findings.json"))
+    args = ap.parse_args(argv)
 
     doc = build()
     pathlib.Path(args.out).write_text(json.dumps(doc, indent=2) + "\n")
