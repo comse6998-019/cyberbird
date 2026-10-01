@@ -1,24 +1,28 @@
-"""V2 and V3: planning, and validation.
+"""The plan-and-validation agent: planning, and validation.
 
-    START -> plan -> controller -> tools -+-> controller
-                        |                 |
-                        |                 +-> plan      (nothing new came back)
-                        v
-                     submit -+-> validate -> END
-                             |
-                             +-> controller             (checks failed)
+    START -> scan -> normalize -> plan -> controller -> tools -+-> controller
+                                              |                |
+                                              |                +-> plan      (nothing new came back)
+                                              v
+                                           submit -+-> validate -> END
+                                                   |
+                                                   +-> controller             (checks failed)
 
-Five nodes. Three of them — `plan`, `controller`, `validate` — are places where a
-model decides something. `tools` and `submit` are runtime work.
+Seven nodes. Three of them — `plan`, `controller`, `validate` — are places where a
+model decides something. `scan`, `normalize`, `tools` and `submit` are runtime
+work. `scan` and `normalize` run once, before any model call: Bandit over the
+pinned fixture, then its report turned into findings.json and the one alert this
+run is about.
 
-Two things changed from V1. Everything else in this file is plumbing that serves
+Two things differ from the reactive agent. Everything else in this file is plumbing that serves
 them.
 
-**`tools -> controller` is no longer unconditional.** In V1 that single edge is
+**`tools -> controller` is no longer unconditional.** In the reactive agent that single edge is
 what makes the agent reactive, and it always went back to the controller. Here it
 chooses, and its second destination is the planner: when the last few
 observations have said nothing new, the runtime decides the *plan* was wrong
-rather than that the *run* is over. V1 ended such a run with `no_progress`.
+rather than that the *run* is over. The reactive agent ends such a run with
+`no_progress`.
 
 **`submit` can no longer accept.** It runs the same three mechanical checks and
 then routes on; only `validate` can end a run `accepted`. The claim that the
@@ -41,13 +45,16 @@ signature and reserves the parameter name `config` for its own `RunnableConfig`
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 
+from cyberbird.plan_and_validation.cli import pick_alert
 from cyberbird.plan_and_validation.config import CONFIG, Config
 from cyberbird.plan_and_validation.dispatch import Dispatcher
+from cyberbird.plan_and_validation.exceptions import AlertNotFound
 from cyberbird.plan_and_validation.llm import build_model
 from cyberbird.plan_and_validation.prompts import (
     CONTROLLER_SYSTEM,
@@ -60,6 +67,7 @@ from cyberbird.plan_and_validation.prompts import (
     replan_task,
     validator_task,
 )
+from cyberbird.plan_and_validation.scan import build_findings, run_bandit, write_findings
 from cyberbird.plan_and_validation.state import RUNNING, AgentState
 from cyberbird.plan_and_validation.submit import Submission
 from cyberbird.plan_and_validation.tools import ToolBundle
@@ -82,13 +90,52 @@ class AgentDAG:
     The agent that *runs* this graph is `ReactiveAgent` in reactive_agent.py.
     """
 
-    def __init__(self, trace: Trace, config: Config = CONFIG, console=None):
+    def __init__(self, trace: Trace, config: Config = CONFIG, console=None,
+                 open_workspace=None):
         self.trace = trace
         self.config = config
         # Optional. Tokens arrive here as the model generates them; a node is
         # the only place that sees them. The trace records the finished call,
         # not the keystrokes.
         self.console = console
+        # alert -> workspace path. The run that supplies this owns the
+        # workspace and removes it; `normalize` only asks for one.
+        self.open_workspace = open_workspace
+
+    def scan(self, state: AgentState) -> dict:
+        """Runtime work: run Bandit over the pinned fixture.
+
+        Scans the fixture, not a workspace. There is no workspace yet, and the
+        scan must see every file, including the cases a workspace withholds.
+        """
+        report = run_bandit(self.config)
+        self.trace.event(EventKind.STATE_CHANGE, node="scan", scanner="bandit",
+                         results=len(report.get("results", [])),
+                         report=str(self.config.scan_report.relative_to(self.config.root)))
+        return {"scan_report": str(self.config.scan_report)}
+
+    def normalize(self, state: AgentState) -> dict:
+        """Runtime work: report -> findings.json -> this run's alert and workspace.
+
+        Mechanical, like `scan`: the alert contract, the categories and the
+        choice of alert are all rules, and no model is asked about any of them.
+        """
+        report = json.loads(Path(state["scan_report"]).read_text())
+        findings = build_findings(report, self.config)
+        write_findings(findings, self.config.findings)
+
+        selector = state["selector"]
+        try:
+            alert = pick_alert(findings, selector.get("alert_id"), selector.get("location"))
+        except AlertNotFound as exc:
+            self.trace.event(EventKind.ROUTING, decision="error", by="runtime", reason=str(exc))
+            return {"status": TerminalStatus.ERROR}
+
+        workspace = self.open_workspace(alert) if self.open_workspace else None
+        self.trace.event(EventKind.STATE_CHANGE, node="normalize",
+                         alerts=findings["totals"]["alerts"], alert=alert)
+        return {"alert": alert, "workspace": str(workspace) if workspace else None,
+                "messages": opening_messages(alert)}
 
     @staticmethod
     def stalled(observations: list, limit: int) -> bool:
@@ -233,7 +280,7 @@ class AgentDAG:
         models produce it far more reliably; the split happens here instead.
 
         A reply with no tool call yields no steps, and that is not fatal — the
-        controller then works exactly as V1 does, without a plan. A planner that
+        controller then works exactly as the reactive agent does, without a plan. A planner that
         fails to plan must not be able to end a run.
         """
         calls = reply.tool_calls or []
@@ -323,8 +370,9 @@ class AgentDAG:
     def submit(self, state: AgentState) -> dict:
         """Runtime work: the three mechanical checks, and nothing beyond them.
 
-        This node cannot accept. In V1 it could — passing the checks ended the
-        run — and moving that power to `validate` is the structural claim of V3:
+        This node cannot accept. In the reactive agent it can — passing the checks
+        ends the run — and moving that power to `validate` is the structural
+        claim of the validator:
         the thing that proposes a patch is not the thing that judges it.
 
         What it still owns is the independent signal. The checks are mechanical,
@@ -343,7 +391,7 @@ class AgentDAG:
             self.trace.event(EventKind.ROUTING, decision="validate", by="runtime")
             return {"candidate_patch": patch, "checks": checks.as_dict()}
     
-        # Also not "rejected", which from V3 means the validator refused the
+        # Also not "rejected", which with a validator means the validator refused the
         # patch and ends a run. Failing the mechanical checks sends the work
         # back for another turn and ends nothing.
         self.trace.event(EventKind.ROUTING, decision="controller", by="runtime",
@@ -411,16 +459,20 @@ class AgentDAG:
         self.trace.event(EventKind.ROUTING, decision="submit", by="model")
         return "submit"
 
+    def after_normalize(self, state: AgentState) -> str:
+        """Plan, or stop because the selector matched no alert."""
+        return END if state["status"] != RUNNING else "plan"
+
     def after_plan(self, state: AgentState) -> str:
         """Straight to the executor, unless the budget ran out first."""
         return END if state["status"] != RUNNING else "controller"
 
     def after_tools(self, state: AgentState) -> str:
-        """Continue, or replan. In V1 this edge was unconditional.
+        """Continue, or replan. In the reactive agent this edge is unconditional.
 
-        V1's `tools -> controller` is the line its own docstring calls the one
+        The reactive agent's `tools -> controller` is the line its own docstring calls the one
         that makes the agent reactive, and it had exactly one destination. Giving
-        it a second is the whole of V2's structural diff — and the new
+        it a second is the whole of planning's structural diff — and the new
         destination is the planner rather than an exit, so a run that has stopped
         learning gets its plan replaced before it gets abandoned.
         """
@@ -439,19 +491,24 @@ class AgentDAG:
     def compile(self):
         """Wire and compile the graph."""
         graph = StateGraph(AgentState)
+        graph.add_node("scan", self.scan)
+        graph.add_node("normalize", self.normalize)
         graph.add_node("plan", self.plan)
         graph.add_node("controller", self.controller)
         graph.add_node("tools", self.tools)
         graph.add_node("submit", self.submit)
         graph.add_node("validate", self.validate)
 
-        # A run now begins by planning, not by acting.
-        graph.add_edge(START, "plan")
+        # Scan, pick the alert, then plan before acting.
+        graph.add_edge(START, "scan")
+        graph.add_edge("scan", "normalize")
+        graph.add_conditional_edges("normalize", self.after_normalize,
+                                    {"plan": "plan", END: END})
         graph.add_conditional_edges("plan", self.after_plan,
                                     {"controller": "controller", END: END})
         graph.add_conditional_edges("controller", self.after_controller,
                                     {"tools": "tools", "submit": "submit", END: END})
-        # V1 wired this one unconditionally and called it the line that makes the
+        # The reactive agent wires this one unconditionally and called it the line that makes the
         # agent reactive. Here it chooses, and its second choice is the planner.
         graph.add_conditional_edges("tools", self.after_tools,
                                     {"controller": "controller", "plan": "plan"})
@@ -464,6 +521,7 @@ class AgentDAG:
         return graph.compile()
 
 
-def build_graph(trace: Trace, config: Config = CONFIG, console=None):
+def build_graph(trace: Trace, config: Config = CONFIG, console=None,
+                open_workspace=None):
     """Compile the graph. Kept as a function so callers need not know the class."""
-    return AgentDAG(trace, config, console).compile()
+    return AgentDAG(trace, config, console, open_workspace).compile()

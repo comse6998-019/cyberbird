@@ -11,7 +11,7 @@ The colour language matches the lecture's graph figures deliberately.
     GREEN   it worked
     RED     it was refused or it failed
 
-So "who decided this?" — the question every version of the agent is built to
+So "who decided this?" — the question every agent here is built to
 answer — is readable from the colour alone, without reading the words.
 
 The console is a listener, not a participant. `Trace` calls it after an event is
@@ -62,12 +62,11 @@ class Console:
         print(f"  {DIM}{elapsed}{Style.RESET_ALL} {colour}{tag:<9}{Style.RESET_ALL}"
               f"{colour}{body}{Style.RESET_ALL}{trailing}", file=self.stream, flush=True)
 
-    def header(self, run_id: str, alert: dict, model: str, budget: int) -> None:
+    def header(self, run_id: str, model: str, budget: int) -> None:
+        """Printed before the scan, so it cannot name the alert yet."""
         if not self.enabled:
             return
-        print(f"\n{BOLD}{run_id}{Style.RESET_ALL}  "
-              f"{alert['rule']} at {alert['file']}:{alert['line']}", file=self.stream)
-        print(f"{DIM}{alert['message']}{Style.RESET_ALL}", file=self.stream)
+        print(f"\n{BOLD}{run_id}{Style.RESET_ALL}", file=self.stream)
         print(f"{DIM}model {model} · budget {budget} calls{Style.RESET_ALL}", file=self.stream)
         print(f"{MODEL}blue = decided{Style.RESET_ALL}   "
               f"{NARRATIVE}yellow = reasoning{Style.RESET_ALL}   "
@@ -124,6 +123,14 @@ class Console:
                     f"{GOOD if checks[name] else BAD}{name}={checks[name]}{Style.RESET_ALL}"
                     for name in ("applies", "touches_line", "rescan_clean"))
                 self._line(RUNTIME, "CHECK", marks)
+            elif e.get("node") == "scan":
+                self._line(RUNTIME, "SCAN", f"{e['scanner']} → {e['results']} results",
+                           e.get("report", ""))
+            elif e.get("node") == "normalize":
+                a = e["alert"]
+                self._line(RUNTIME, "ALERT", f"{a['alert_id']}  {a['rule']} at {a['file']}:{a['line']}",
+                           f"1 of {e['alerts']}")
+                self._line(DIM, "", _short(a["message"], 90))
             elif e.get("node") == "plan":
                 steps, revised = e.get("steps") or [], e.get("revised")
                 self._line(MODEL, "PLAN ↻" if revised else "PLAN",
@@ -167,7 +174,7 @@ class Console:
         """The run as a sequence diagram, printed when the trace closes.
 
         The graph shows what the agent could do; this shows what it did. Mermaid
-        renders in the notes beside the V4 flowchart; text reads in a terminal.
+        renders in the lecture notes; text reads in a terminal.
         """
         from cyberbird.plan_and_validation.trajectory import to_mermaid, to_text
 

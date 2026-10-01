@@ -2,7 +2,7 @@
 
     from cyberbird.reactive.config import CONFIG, Config
 
-    CONFIG.fixture          # demo/fixture
+    CONFIG.fixture          # fixtures/owasp-benchmark-python/src
     CONFIG.search_max_hits  # 50
 
 Frozen, so nothing mutates it mid-run and two components cannot disagree about
@@ -39,8 +39,7 @@ class Config:
 
     # limits the runtime enforces
     budget: int = 40            # model calls per run: the failsafe, not a target
-    max_attempts: int = 2       # V4's outer loop
-    tool_retries: int = 1       # V2: the runtime's free retry, no model call
+    tool_retries: int = 1       # the runtime's free retry, no model call
     no_progress_steps: int = 3  # consecutive steps without a state change
 
     # tool limits, to protect the context window rather than the disk
@@ -65,15 +64,16 @@ class Config:
     @property
     def fixture(self) -> Path:
         """The pinned fixture. Never written to."""
-        return self.root / "fixture"
-
-    @property
-    def rules_dir(self) -> Path:
-        return self.root / "intake" / "rules"
+        return self.root / "fixtures" / "owasp-benchmark-python" / "src"
 
     @property
     def findings(self) -> Path:
-        return self.root / "data" / "findings.json"
+        return self.runs_dir / "findings.json"
+
+    @property
+    def scan_report(self) -> Path:
+        """Bandit's raw report, written by the scan node."""
+        return self.runs_dir / "scans" / "bandit.json"
 
     @property
     def runs_dir(self) -> Path:
@@ -82,7 +82,7 @@ class Config:
     @property
     def ground_truth(self) -> Path:
         """Named so it can be asserted unreachable, never so it can be read."""
-        return self.root / "data" / "ground-truth"
+        return self.fixture.parent / "ground-truth"
 
     # variants
     def with_(self, **overrides) -> "Config":

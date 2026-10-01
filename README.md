@@ -1,41 +1,50 @@
 # Cyberbird
 
-Demos for COMSE6998-019. One thread runs through the course: **Cyberbird**, an agent that patches
-security vulnerabilities. It starts as a loop on a laptop and ends as a full
-agent deployed on KIND.
+This is an instruction companion for COMSE6998-019. One thread runs through the course: **Cyberbird**, this is our an agent that helps identify and remediate security vulnerabilities. It starts as a loop on a laptop and ends as a full agent deployed on KIND as the course progresses.
 
-    fixture/  ──scan──▶  data/scans/  ──intake──▶  data/findings.json  ──▶  cyberbird  ──▶  runs/
-    (vulnerable app)     (Bandit, Semgrep)         (720 alerts)             (patches one)
+## Project Structure
+
+The agent implementations are:
 
 | Folder | What it is |
 |---|---|
-| `fixture/` | OWASP BenchmarkPython at a pinned commit: the code being patched |
-| `data/` | scanner output, the alert queue, and the ground truth (kept out of `fixture/` so the agent cannot read it) |
-| `intake/` | turns scanner output into the alert queue |
-| `cyberbird/` | the agent, one folder per version ([versions](cyberbird/README.md)) |
-| `lectures/` | per-lecture notes, diagrams, and example runs |
+| [`cyberbird/reactive/`](cyberbird/reactive) | Reactive agent |
+| [`cyberbird/plan_and_validation/`](cyberbird/plan_and_validation) | Plan-and-validation agent |
 
-## Lectures
-
-| Lecture | Command | Code |
-|---|---|---|
-| 2 | `cyberbird lec02 reactive` | [`cyberbird/reactive`](cyberbird/reactive) |
-| 2 | `cyberbird lec02 plan-and-validation` | [`cyberbird/plan_and_validation`](cyberbird/plan_and_validation) |
 
 ## Set up
 
-    python3 -m venv .venv
-    .venv/bin/pip install -e '.[dev]'
-    source .venv/bin/activate
-    cyberbird --help
+### Prerequisites
+1. You'll need to have Python installed (I recommend Python 3.12 or later via [pyenv](https://github.com/pyenv/pyenv)). 
+2. Also get [`uv`](https://docs.astral.sh/uv/) to install the necessary dependencies and actually run the agents.
+3. The agents call a local model through [Ollama](https://ollama.com):
+`ollama pull qwen3.8`. So get that set up before running the agents.
 
-The agents call a local model through [Ollama](https://ollama.com):
-`ollama pull qwen3.8`. See each version's README for the pre-flight checks.
+### Installation
 
-## Commands
+```bash
+uv sync
+```
 
-    cyberbird lec02 reactive --alert-id bc284c6b   # run V1 on one alert
-    cyberbird alerts --list                        # browse the queue
-    cyberbird trace runs/<run>.jsonl               # replay a run
-    cyberbird intake                               # rebuild data/findings.json
-    pytest                                         # intake + CLI tests
+Thats it! You should now have all the necessary dependencies installed and be ready to run the agents.
+
+```bash
+uv run cyberbird --help
+```
+
+will get you going 
+
+```help
+❯ uv run cyberbird --help
+Usage: cyberbird [OPTIONS] COMMAND [ARGS]...
+
+  Cyberbird: vulnerability-patching agents, one subcommand each.
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  plan-and-validation  A planner up front, replanning, and a validator.
+  reactive             The model picks each tool call; the runtime checks the
+                       result.
+```

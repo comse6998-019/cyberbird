@@ -1,13 +1,15 @@
-"""V1: the reactive agent.
+"""The reactive agent.
 
-    START -> controller -> tools -> controller -> ... -> submit -> END
-                  |                                        |
-                  +--------------- rejected ---------------+
+    START -> scan -> normalize -> controller -> tools -> controller -> ... -> submit -> END
+                                      |                                        |
+                                      +--------------- rejected ---------------+
 
-Three nodes. `controller` is the only one where a model decides; `tools` and
-`submit` are runtime work. The model chooses which edge is taken by emitting a
+Five nodes. `controller` is the only one where a model decides; `scan`,
+`normalize`, `tools` and `submit` are runtime work. `scan` and `normalize` run
+once, before any model call: Bandit over the pinned fixture, then its report
+turned into findings.json and the one alert this run is about. The model chooses which edge is taken by emitting a
 tool call or not — that choice, made at run time by a non-deterministic
-component, is what makes this version reactive.
+component, is what makes this agent reactive.
 
 The graph definition is fixed. Nothing here is rewritten between runs; the
 different paths a run takes are predicates over state.
@@ -25,6 +27,7 @@ signature and reserves the parameter name `config` for its own `RunnableConfig`
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
@@ -33,7 +36,10 @@ from langgraph.graph import END, START, StateGraph
 from cyberbird.reactive.config import CONFIG, Config
 from cyberbird.reactive.dispatch import Dispatcher
 from cyberbird.reactive.llm import build_model
+from cyberbird.reactive.cli import pick_alert
+from cyberbird.reactive.exceptions import AlertNotFound
 from cyberbird.reactive.prompts import CONTROLLER_SYSTEM, controller_task, rejected_feedback
+from cyberbird.reactive.scan import build_findings, run_bandit, write_findings
 from cyberbird.reactive.state import RUNNING, AgentState
 from cyberbird.reactive.submit import Submission
 from cyberbird.reactive.tools import ToolBundle
@@ -56,13 +62,52 @@ class AgentDAG:
     The agent that *runs* this graph is `ReactiveAgent` in reactive_agent.py.
     """
 
-    def __init__(self, trace: Trace, config: Config = CONFIG, console=None):
+    def __init__(self, trace: Trace, config: Config = CONFIG, console=None,
+                 open_workspace=None):
         self.trace = trace
         self.config = config
         # Optional. Tokens arrive here as the model generates them; a node is
         # the only place that sees them. The trace records the finished call,
         # not the keystrokes.
         self.console = console
+        # alert -> workspace path. The run that supplies this owns the
+        # workspace and removes it; `normalize` only asks for one.
+        self.open_workspace = open_workspace
+
+    def scan(self, state: AgentState) -> dict:
+        """Runtime work: run Bandit over the pinned fixture.
+
+        Scans the fixture, not a workspace. There is no workspace yet, and the
+        scan must see every file, including the cases a workspace withholds.
+        """
+        report = run_bandit(self.config)
+        self.trace.event(EventKind.STATE_CHANGE, node="scan", scanner="bandit",
+                         results=len(report.get("results", [])),
+                         report=str(self.config.scan_report.relative_to(self.config.root)))
+        return {"scan_report": str(self.config.scan_report)}
+
+    def normalize(self, state: AgentState) -> dict:
+        """Runtime work: report -> findings.json -> this run's alert and workspace.
+
+        Mechanical, like `scan`: the alert contract, the categories and the
+        choice of alert are all rules, and no model is asked about any of them.
+        """
+        report = json.loads(Path(state["scan_report"]).read_text())
+        findings = build_findings(report, self.config)
+        write_findings(findings, self.config.findings)
+
+        selector = state["selector"]
+        try:
+            alert = pick_alert(findings, selector.get("alert_id"), selector.get("location"))
+        except AlertNotFound as exc:
+            self.trace.event(EventKind.ROUTING, decision="error", by="runtime", reason=str(exc))
+            return {"status": TerminalStatus.ERROR}
+
+        workspace = self.open_workspace(alert) if self.open_workspace else None
+        self.trace.event(EventKind.STATE_CHANGE, node="normalize",
+                         alerts=findings["totals"]["alerts"], alert=alert)
+        return {"alert": alert, "workspace": str(workspace) if workspace else None,
+                "messages": opening_messages(alert)}
 
     @staticmethod
     def stalled(observations: list, limit: int) -> bool:
@@ -159,8 +204,8 @@ class AgentDAG:
     def submit(self, state: AgentState) -> dict:
         """Runtime work: the three mechanical checks.
 
-        No model judges acceptance here. That is V3's job, and keeping this
-        node mechanical is what makes V3's validator worth adding.
+        No model judges acceptance here. That is the validator's job, and keeping
+        this node mechanical is what makes a validator worth adding.
         """
         submission = Submission(Path(state["workspace"]), state["alert"], self.config)
         checks = submission.check()
@@ -175,6 +220,10 @@ class AgentDAG:
                     reasons=checks.reasons)
         return {"candidate_patch": patch,
                 "messages": [HumanMessage(rejected_feedback(checks.reasons))]}
+
+    def after_normalize(self, state: AgentState) -> str:
+        """Start the loop, or stop because the selector matched no alert."""
+        return END if state["status"] != RUNNING else "controller"
 
     def after_controller(self, state: AgentState) -> str:
         """Continue, or submit. The model picks by calling a tool or not."""
@@ -192,20 +241,26 @@ class AgentDAG:
     def compile(self):
         """Wire and compile the graph."""
         graph = StateGraph(AgentState)
+        graph.add_node("scan", self.scan)
+        graph.add_node("normalize", self.normalize)
         graph.add_node("controller", self.controller)
         graph.add_node("tools", self.tools)
         graph.add_node("submit", self.submit)
 
-        graph.add_edge(START, "controller")
+        graph.add_edge(START, "scan")
+        graph.add_edge("scan", "normalize")
+        graph.add_conditional_edges("normalize", self.after_normalize,
+                                    {"controller": "controller", END: END})
         graph.add_conditional_edges("controller", self.after_controller,
                                     {"tools": "tools", "submit": "submit", END: END})
-        # The edge back. This one line is what makes V1 reactive.
+        # The edge back. This one line is what makes the agent reactive.
         graph.add_edge("tools", "controller")
         graph.add_conditional_edges("submit", self.after_submit,
                                     {"controller": "controller", END: END})
         return graph.compile()
 
 
-def build_graph(trace: Trace, config: Config = CONFIG, console=None):
-    """Compile V1's graph. Kept as a function so callers need not know the class."""
-    return AgentDAG(trace, config, console).compile()
+def build_graph(trace: Trace, config: Config = CONFIG, console=None,
+                open_workspace=None):
+    """Compile the reactive graph. Kept as a function so callers need not know the class."""
+    return AgentDAG(trace, config, console, open_workspace).compile()

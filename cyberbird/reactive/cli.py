@@ -1,14 +1,13 @@
-"""The command line shared by every version.
+"""The command line shared by every agent.
 
-Each of v0.py to v4.py builds its parser from `build_parser`, so the five take
-identical arguments and a trace from one is comparable with a trace from
-another.
+Every agent builds its parser from `build_parser`, so they all take identical
+arguments and a trace from one is comparable with a trace from another.
 
-Run this module directly to inspect the alert queue:
+Run this module directly to inspect the alert queue the last scan wrote:
 
-    python -m agent.cli --list
-    python -m agent.cli --category sqli
-    python -m agent.cli --alert-id bc284c6b
+    python -m cyberbird.reactive.cli --list
+    python -m cyberbird.reactive.cli --category sqli
+    python -m cyberbird.reactive.cli --alert-id bc284c6b
 """
 from __future__ import annotations
 
@@ -26,7 +25,7 @@ def load_findings(path: Path | None = None) -> dict:
     path = path or CONFIG.findings
     if not path.exists():
         raise FileNotFoundError(
-            f"{path} not found — run `python -m intake.build_findings` first")
+            f"{path} not found — run `python -m cyberbird.reactive.scan` first")
     return json.loads(path.read_text())
 
 
@@ -39,14 +38,18 @@ def iter_alerts(findings: dict):
 def select_alert(alert_id: str | None = None,
                  location: str | None = None,
                  path: Path | None = None) -> dict:
-    """Resolve a selector to exactly one alert.
+    """Resolve a selector against the findings.json on disk."""
+    return pick_alert(load_findings(path), alert_id, location)
 
-    `location` is FILE:LINE. If it matches more than one alert — two scanners
-    can flag the same line — that is an error naming the candidates, not a
-    silent pick.
+
+def pick_alert(findings: dict, alert_id: str | None = None,
+               location: str | None = None) -> dict:
+    """Resolve a selector to exactly one alert in `findings`.
+
+    `location` is FILE:LINE. If it matches more than one alert — Bandit can
+    flag the same line under two rules — that is an error naming the
+    candidates, not a silent pick.
     """
-    findings = load_findings(path)
-
     if alert_id:
         for alert in iter_alerts(findings):
             if alert["alert_id"] == alert_id:
@@ -71,12 +74,12 @@ def select_alert(alert_id: str | None = None,
 
 
 def build_parser(description: str) -> argparse.ArgumentParser:
-    """The argument surface every version shares."""
+    """The argument surface every agent shares."""
     p = argparse.ArgumentParser(description=description)
 
     sel = p.add_argument_group("alert selection")
     sel.add_argument("--alert-id", metavar="ID",
-                     help=f"alert id from findings.json (worked example: {CONFIG.worked_example})")
+                     help=f"alert id from the scan (worked example: {CONFIG.worked_example})")
     sel.add_argument("--location", metavar="FILE:LINE",
                      help="select by source location instead of id")
 
@@ -88,17 +91,32 @@ def build_parser(description: str) -> argparse.ArgumentParser:
     run.add_argument("--budget", type=int, default=CONFIG.budget,
                      help=f"model-call ceiling, checked before each call (default: {CONFIG.budget})")
     run.add_argument("--trace", type=Path, default=None,
-                     help="where to write the JSONL trace (default: runs/<version>-<alert>.jsonl)")
+                     help="where to write the JSONL trace (default: runs/<run>.jsonl)")
     return p
 
 
-def resolve_alert(args) -> dict:
-    """Selector -> alert, for a parser built by `build_parser`."""
-    return select_alert(alert_id=args.alert_id, location=args.location)
+def selector_from_args(args) -> dict:
+    """The alert selector a run starts from; the normalize node resolves it."""
+    if not (args.alert_id or args.location):
+        raise AlertNotFound("pass --alert-id or --location FILE:LINE")
+    return {"alert_id": args.alert_id, "location": args.location}
 
 
-def default_trace_path(version: str, alert: dict, config: Config = CONFIG) -> Path:
-    return config.runs_dir / f"{version}-{alert['alert_id']}.jsonl"
+def run_name(agent: str, selector: dict) -> str:
+    """Named before the scan, so from the selector rather than the alert.
+
+    An alert id names the run directly (`reactive-bc284c6b`). A location has no
+    id until the scan resolves it, so the file stem and line stand in
+    (`reactive-BenchmarkTest00283-46`).
+    """
+    if selector.get("alert_id"):
+        return f"{agent}-{selector['alert_id']}"
+    file, _, line = selector["location"].rpartition(":")
+    return f"{agent}-{Path(file).stem}-{line}"
+
+
+def default_trace_path(run: str, config: Config = CONFIG) -> Path:
+    return config.runs_dir / f"{run}.jsonl"
 
 
 def _describe(alert: dict) -> str:

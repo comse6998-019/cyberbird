@@ -3,8 +3,8 @@
 The state graph shows what the agent *could* do. A trajectory shows what one run
 actually did, in order, with who decided each step.
 
-    python -m cyberbird.reactive.trajectory runs/v1-bc284c6b.jsonl
-    python -m cyberbird.reactive.trajectory runs/v1-bc284c6b.jsonl --format mermaid
+    python -m cyberbird.reactive.trajectory runs/reactive-bc284c6b.jsonl
+    python -m cyberbird.reactive.trajectory runs/reactive-bc284c6b.jsonl --format mermaid
 
 Three participants, matching the lecture's vocabulary:
 

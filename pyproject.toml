@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cyberbird"
 version = "0.2.0"
-description = "A vulnerability-patching agent, built one lecture at a time (COMSE6998-019)."
+description = "Vulnerability-patching agent implementations (COMSE6998-019)."
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.1",
@@ -13,7 +13,10 @@ dependencies = [
     "langchain",
     "langchain-core",
     "langchain-ollama",
+    "langchain-openrouter>=0.2.9",
     "langgraph",
+    "llama-index-workflows>=2.24.1",
+    "python-dotenv>=1.2.3",
 ]
 
 [project.optional-dependencies]
@@ -23,12 +26,12 @@ dev = ["pytest"]
 cyberbird = "cyberbird.cli:cli"
 
 [tool.setuptools.packages.find]
-include = ["cyberbird*", "intake*"]
+include = ["cyberbird*"]
 
 [tool.setuptools.package-data]
 "cyberbird.reactive.prompts" = ["*.md"]
 "cyberbird.plan_and_validation.prompts" = ["*.md"]
-"intake" = ["rules/*.yml"]
+"cyberbird.event_driven.prompts" = ["*.md"]
 
 [tool.pytest.ini_options]
-testpaths = ["intake/tests", "cyberbird/tests"]
+testpaths = ["cyberbird/tests"]

@@ -1,0 +1,49 @@
+# SGLang, pinned at the last release before three pickle-deserialization RCEs
+# were fixed. The answer key is the next release, v0.5.10.
+#
+# Sources: GitHub advisory database (package `sglang`, pip) and the fix PRs.
+# The advisories cite PR #20904 for all three CVEs; it fixes only 3989. The
+# ZMQ bindings (3059, 3060) were fixed by PR #21435.
+#
+# `file` and `line` point at the vulnerable code in the PINNED tree. The fixes
+# are mitigations (bind to localhost, SafeUnpickler), and 3060's fix lands in
+# srt/utils/network.py, which was split out of common.py after v0.5.9, so a
+# patch is judged by location, not by matching the upstream diff.
+
+[app]
+name = "sglang"
+repo = "https://github.com/sgl-project/sglang"
+language = "python"
+
+[pinned]                      # what the agent patches
+tag = "v0.5.9"
+commit = "bbe9c7eeb520b0a67e92d133dfc137a3688dc7f2"
+
+[answer_key]
+kind = "fix-release"          # the next release fixed these
+tag = "v0.5.10"
+commit = "1519acf37c23f2189adb93f57ca9cd2db1bebf18"
+
+[[answer_key.vulns]]
+cve = "CVE-2026-3059"
+ghsa = "GHSA-rgq9-fqf5-fv58"
+category = "deserialization"
+file = "python/sglang/multimodal_gen/runtime/scheduler_client.py"
+line = 21                     # broker binds tcp://*
+fix_commit = "8d4fca59080e9451af87d7af817fe5040796e772"   # PR #21435
+
+[[answer_key.vulns]]
+cve = "CVE-2026-3060"
+ghsa = "GHSA-jx93-g359-86wm"
+category = "deserialization"
+file = "python/sglang/srt/utils/common.py"
+line = 1474                   # get_zmq_socket_on_host defaults to tcp://*; called from srt/disaggregation/encode_receiver.py
+fix_commit = "8d4fca59080e9451af87d7af817fe5040796e772"   # PR #21435
+
+[[answer_key.vulns]]
+cve = "CVE-2026-3989"
+ghsa = "GHSA-hvwj-8w5g-28rg"
+category = "deserialization"
+file = "scripts/playground/replay_request_dump.py"
+line = 57                     # pickle.load on a user-supplied file
+fix_commit = "5fc5c18bed4a4109082d9b14197ed33de1499231"   # PR #20904

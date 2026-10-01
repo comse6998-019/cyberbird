@@ -1,0 +1,4 @@
+[submodule "fixtures/sglang/src"]
+	path = fixtures/sglang/src
+	url = https://github.com/sgl-project/sglang
+	shallow = true

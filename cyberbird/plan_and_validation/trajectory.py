@@ -3,8 +3,8 @@
 The state graph shows what the agent *could* do. A trajectory shows what one run
 actually did, in order, with who decided each step.
 
-    python -m cyberbird.plan_and_validation.trajectory runs/v23-bc284c6b.jsonl
-    python -m cyberbird.plan_and_validation.trajectory runs/v23-bc284c6b.jsonl --format mermaid
+    python -m cyberbird.plan_and_validation.trajectory runs/plan-and-validation-bc284c6b.jsonl
+    python -m cyberbird.plan_and_validation.trajectory runs/plan-and-validation-bc284c6b.jsonl --format mermaid
 
 Five participants, matching the lecture's vocabulary:
 

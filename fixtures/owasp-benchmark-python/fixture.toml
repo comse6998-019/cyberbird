@@ -1,0 +1,20 @@
+# OWASP BenchmarkPython. Every test case is labelled real or false-positive, so
+# the answer key is the benchmark's own label file.
+#
+# Not read by code yet: REPO/COMMIT in intake/build_findings.py and
+# WITHHELD_GLOBS in cyberbird/*/workspace.py still hold these values.
+
+[app]
+name = "owasp-benchmark-python"
+repo = "https://github.com/OWASP-Benchmark/BenchmarkPython"
+language = "python"
+
+[pinned]
+commit = "f1291485808b66e20ddb6b01b10dc71b3df8c8ba"
+
+[answer_key]
+kind = "labels"
+path = "ground-truth/expectedresults-0.1.csv"   # relative to this file
+
+[workspace]
+withheld = ["testcode/BenchmarkTest*.py", "templates/web/*/BenchmarkTest*.html"]

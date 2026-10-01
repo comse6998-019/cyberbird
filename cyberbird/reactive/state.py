@@ -1,4 +1,4 @@
-"""The state record every version shares, and its reducers.
+"""The state record every agent shares, and its reducers.
 
 This is the schema handed to `StateGraph(AgentState)`.
 
@@ -9,16 +9,18 @@ combined by calling it. Reducers are LangGraph's to call, never yours.
 
 Fields fall into two lifetimes here:
 
-    identity    set once, never changed     alert, repo, commit, workspace
+    identity    set once, never changed     selector, repo, commit
+                set once, by `normalize`    scan_report, alert, workspace
     run-local   built up as the run goes    messages, observations, candidate_patch,
                                             usage, model_calls, status
 
-Each later version adds the fields it actually populates: V2 brings `plan` with
-the planner that writes it, V3 brings `validation` with the validator, and V4
-brings `reflections` and `attempt` along with the machinery to clear run-local
-fields between attempts. A field arrives with the node that fills it, so the
-diff between two versions shows one change, not a field that was always there
-waiting.
+`alert` and `workspace` start empty. The run begins from a *selector* (an alert
+id or a FILE:LINE), and only the normalize node, having scanned the fixture,
+can turn that into an alert. The workspace waits for the alert because it
+withholds every benchmark case except the alert's own.
+
+A field exists only when a node here fills it, so nothing sits in the record
+waiting for a node this agent does not have.
 """
 from __future__ import annotations
 
@@ -52,10 +54,14 @@ def add_usage(existing: Usage | None, update: Usage | dict | None) -> Usage:
 
 class AgentState(TypedDict, total=False):
     # identity, set once
-    alert: dict
+    selector: dict
     repo: str
     commit: str
-    workspace: str
+
+    # set once, by the scan and normalize nodes
+    scan_report: str | None
+    alert: dict | None
+    workspace: str | None
 
     # built up as the run goes
     messages: Annotated[list, add_messages]
@@ -66,24 +72,27 @@ class AgentState(TypedDict, total=False):
     status: str
 
 
-def initial_state(alert: dict, workspace: str,
-                  config: Config = CONFIG) -> AgentState:
-    """A fresh run on one alert.
+def initial_state(selector: dict, config: Config = CONFIG) -> AgentState:
+    """A fresh run, before anything has been scanned.
 
     Called before the graph starts, so no reducer is involved: this dict becomes
     the starting state directly.
 
-    `workspace` is required, not defaulted. Creating one here would produce a
-    tree nobody owns and nobody cleans up — and, worse, one built without
-    `case=`, so every sibling benchmark case would be present and the agent
-    could grep the answer out of a safe twin. The caller that makes the
-    workspace is the caller that must remove it.
+    There is no workspace here, and there must not be. Creating one would
+    produce a tree nobody owns and nobody cleans up — and, worse, one built
+    without `case=`, so every sibling benchmark case would be present and the
+    agent could grep the answer out of a safe twin. `normalize` asks the run
+    for one once it knows the alert; the run that makes it is the run that
+    removes it.
     """
     return AgentState(
-        alert=alert,
-        repo=config.fixture.name,
+        selector=selector,
+        # fixture is fixtures/<app>/src, so the app's name is its parent's
+        repo=config.fixture.parent.name,
         commit=PINNED_COMMIT,
-        workspace=workspace,
+        scan_report=None,
+        alert=None,
+        workspace=None,
         messages=[],
         observations=[],
         candidate_patch=None,

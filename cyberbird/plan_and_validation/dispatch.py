@@ -2,7 +2,7 @@
 
 This is where execution authority lives. The model *proposes* a tool call; the
 runtime executes it, or refuses. Every refusal in the system happens here, in
-one place, identically for all five versions.
+one place, identically for every agent.
 
 It is also what owns the observation channel. A model can emit a thought, an
 action, and a fabricated observation in one response without ever touching the
@@ -117,9 +117,9 @@ class Dispatcher:
 
         A refusal is an observation, not an exception. An exception ends the
         run; an observation lets the model read what went wrong and choose
-        again — which is precisely what V1's loop is for. When `edit` refuses an
+        again — which is precisely what the reactive loop is for. When `edit` refuses an
         ambiguous target, that message goes back to the model and it retries
-        with more context. Raise instead and V1 dies on its first sloppy edit.
+        with more context. Raise instead and the agent dies on its first sloppy edit.
 
         Exceptions remain for the genuinely unrecoverable, such as an unwritable
         trace. Not for the model being wrong.

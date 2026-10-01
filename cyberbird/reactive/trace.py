@@ -5,10 +5,10 @@ graph records model calls and routing decisions, and every run ends by stating a
 terminal status. Build this before anything that generates events — a trace
 added afterwards is always missing the event you needed.
 
-The trace is what makes the lecture's claims checkable. "V2 retried without a
-model call" is an assertion about this file, not about the code.
+The trace is what makes the lecture's claims checkable. "The planner retried
+without a model call" is an assertion about this file, not about the code.
 
-    with Trace("v1-bc284c6b", path) as t:
+    with Trace("reactive-bc284c6b", path) as t:
         t.event("model_call", role="controller", usage={"input": 900, "output": 40})
         t.event("routing", decision="tools", by="model")
         t.terminal("accepted")
@@ -17,8 +17,7 @@ Two design decisions are recorded here rather than left implicit:
 
 1. `usage` on a Trace is accumulated *from the events written*, so it cannot
    drift from the file. It is a mirror for reporting. `AgentState["usage"]` is
-   authoritative for the budget predicate, because that is what routing reads
-   and what V4's attempt reset will have to retain deliberately.
+   authoritative for the budget predicate, because that is what routing reads.
 
 2. Every event carries both a monotonic `step` and a wall-clock `ts`. `ts` is
    volatile, so comparing two runs strips it — see `compare`. Keep the clock for
@@ -42,7 +41,6 @@ class TerminalStatus(str, Enum):
     __str__ = str.__str__
 
     ACCEPTED = "accepted"                  # the goal test passed
-    UNRESOLVED = "unresolved"              # attempts exhausted (V4)
     BUDGET_EXHAUSTED = "budget_exhausted"  # the failsafe fired
     NO_PROGRESS = "no_progress"            # no state change over N steps
     ERROR = "error"                        # unrecoverable
@@ -63,7 +61,7 @@ class EventKind(str, Enum):
     MODEL_CALL = "model_call"      # a model node's four token counters
     TOOL_REQUEST = "tool_request"  # the dispatcher, never a graph node
     TOOL_RESULT = "tool_result"    # the dispatcher
-    STATE_CHANGE = "state_change"  # attempt resets and non-obvious updates
+    STATE_CHANGE = "state_change"  # non-obvious state updates
     ROUTING = "routing"            # a conditional edge: who decided
     TERMINAL = "terminal"          # once, at the end, always
 

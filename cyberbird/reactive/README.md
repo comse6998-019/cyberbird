@@ -3,7 +3,7 @@
 Run it:
 
 ```sh
-cyberbird lec02 reactive --alert-id bc284c6b
+cyberbird reactive --alert-id bc284c6b
 ```
 
 `python -m cyberbird.reactive` runs the same thing.
@@ -26,17 +26,16 @@ turn of the loop as it happens.
    ollama list
    ```
 
-3. Confirm the alert queue exists. It should report 720 alerts.
+3. Confirm Bandit is installed. Every run starts by scanning the fixture with
+   it; the scan takes about two seconds.
 
    ```sh
-   cyberbird alerts --list
+   bandit --version
    ```
-
-If step 3 fails, rebuild it with `cyberbird intake`.
 
 ## Read the output
 
-Colour answers the question every version of the agent is built around: **who
+Colour answers the question every agent here is built around: **who
 decided this?**
 
 | Colour | Meaning |
@@ -59,7 +58,7 @@ line is near-instant. The gap is the point.
    9.4s TOOL ←   read_file ok                1665 chars
 ```
 
-A run ends with one of five terminal statuses: `accepted`, `unresolved`,
+A run ends with one of four terminal statuses: `accepted`,
 `budget_exhausted`, `no_progress`, `error`.
 
 ## Choose what to run
@@ -67,14 +66,16 @@ A run ends with one of five terminal statuses: `accepted`, `unresolved`,
 Select one alert by id, or by location:
 
 ```sh
-cyberbird lec02 reactive --alert-id be043aa4
-cyberbird lec02 reactive --location testcode/BenchmarkTest00283.py:46
+cyberbird reactive --alert-id be043aa4
+cyberbird reactive --location testcode/BenchmarkTest00283.py:46
 ```
 
-Browse the queue first if you want a different weakness:
+Browse the alerts first if you want a different weakness. The first command
+scans the fixture and writes `runs/findings.json` without starting an agent:
 
 ```sh
-cyberbird alerts --category weakrand
+python -m cyberbird.reactive.scan
+python -m cyberbird.reactive.cli --category weakrand
 ```
 
 Three that work, for a live demo:
@@ -103,18 +104,18 @@ Set the budget to zero. The run ends before it issues a single model call,
 which is what "checked before the call, not after" means.
 
 ```sh
-cyberbird lec02 reactive --alert-id bc284c6b --budget 0
+cyberbird reactive --alert-id bc284c6b --budget 0
 ```
 
 ## Read the trace afterwards
 
 The console is a summary. The trace is the record, one JSON event per line, at
-`runs/v1-<alert_id>.jsonl`.
+`runs/reactive-<alert_id>.jsonl`.
 
 ```sh
 .venv/bin/python -c "
 from cyberbird.reactive.trace import read_events, kinds
-print(kinds(read_events('runs/v1-bc284c6b.jsonl')))"
+print(kinds(read_events('runs/reactive-bc284c6b.jsonl')))"
 ```
 
 To show that a run reproduces, run it twice to different files and compare.
@@ -128,22 +129,29 @@ print(compare('/tmp/a.jsonl', '/tmp/b.jsonl'))"
 
 ## What the graph does
 
-Three nodes. `controller` is the only one where a model decides.
+Five nodes. `controller` is the only one where a model decides.
 
 ```
-START → controller → tools → controller → … → submit → END
-            │                                   │
-            └───────────── rejected ────────────┘
+START → scan → normalize → controller → tools → controller → … → submit → END
+                               │                                   │
+                               └───────────── rejected ────────────┘
 ```
+
+`scan` and `normalize` run once, before any model call. `scan` runs Bandit over
+the pinned fixture and saves `runs/scans/bandit.json`. `normalize` turns that
+report into `runs/findings.json`, picks the alert named by `--alert-id` or
+`--location`, and only then asks for the workspace: the workspace withholds
+every benchmark case but the alert's own, so it cannot exist before the alert
+does. Neither node calls a model.
 
 The model chooses its own next edge: it either emits a tool call, which routes
 to `tools`, or it does not, which routes to `submit`. The `tools → controller`
-edge is what makes this version reactive.
+edge is what makes this agent reactive.
 
 `submit` runs three mechanical checks — the patch applies, it touches the
 flagged line, a rescan no longer reports the alert. No model judges acceptance.
 The checks cannot tell whether the endpoint still returns what it returned
-before, and that gap is what V3's validator exists to address.
+before, and that gap is what a validator exists to address.
 
 ## Fix a failed run
 

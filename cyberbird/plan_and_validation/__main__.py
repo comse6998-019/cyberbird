@@ -1,4 +1,4 @@
-"""Run V2/V3 on one alert.
+"""Run the plan-and-validation agent on one alert.
 
     python -m cyberbird.plan_and_validation --alert-id bc284c6b
     python -m cyberbird.plan_and_validation --location testcode/BenchmarkTest00283.py:46 --budget 10
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import sys
 
-from cyberbird.plan_and_validation.cli import build_parser, default_trace_path, resolve_alert
+from cyberbird.plan_and_validation.cli import build_parser, default_trace_path, run_name, selector_from_args
 from cyberbird.plan_and_validation.console import Console
 from cyberbird.plan_and_validation.config import CONFIG, Config
 from cyberbird.plan_and_validation.exceptions import AlertNotFound
@@ -15,17 +15,18 @@ from cyberbird.plan_and_validation.graph import build_graph
 from cyberbird.plan_and_validation.reactive_agent import ReactiveAgent
 from cyberbird.plan_and_validation.trace import Trace
 
-VERSION = "v23"
+AGENT = "plan-and-validation"
 
 
 def draw(kind: str, config: Config) -> int:
     """Draw the state graph without running it.
 
     Conditional edges render dotted and unconditional ones solid, and in this
-    version only two edges are solid: `START -> plan` and `validate -> END`. The
-    entry and the exit are fixed; every edge between them is chosen at run time
-    by a predicate over state. In V1 `tools -> controller` was solid too, and
-    seeing it become dotted here is the clearest picture of what V2 changed.
+    agent only three edges are solid: `START -> scan`, `scan -> normalize` and
+    `validate -> END`. The entry and the exit are fixed; every edge between them is chosen at run time
+    by a predicate over state. In the reactive agent `tools -> controller` is
+    solid too, and seeing it become dotted here is the clearest picture of what
+    planning changed.
     """
     import tempfile
     from pathlib import Path as _Path
@@ -42,7 +43,7 @@ def draw(kind: str, config: Config) -> int:
     elif kind == "ascii":
         print(graph.draw_ascii())
     else:
-        out = config.runs_dir / f"{VERSION}-graph.png"
+        out = config.runs_dir / f"{AGENT}-graph.png"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(graph.draw_mermaid_png())
         print(f"wrote {out}")
@@ -50,7 +51,7 @@ def draw(kind: str, config: Config) -> int:
 
 
 def main(argv=None) -> int:
-    parser = build_parser(f"{VERSION}: the planning and validation agent")
+    parser = build_parser("the plan-and-validation agent")
     parser.add_argument("--quiet", action="store_true",
                         help="suppress the live commentary; print only the report")
     parser.add_argument("--graph", choices=("mermaid", "ascii", "png"),
@@ -65,18 +66,18 @@ def main(argv=None) -> int:
         return draw(args.graph, config)
 
     try:
-        alert = resolve_alert(args)
-    except (AlertNotFound, FileNotFoundError) as exc:
+        selector = selector_from_args(args)
+    except AlertNotFound as exc:
         print(exc, file=sys.stderr)
         return 1
 
-    trace_path = args.trace or default_trace_path(VERSION, alert, config)
-    run_id = f"{VERSION}-{alert['alert_id']}"
+    run_id = run_name(AGENT, selector)
+    trace_path = args.trace or default_trace_path(run_id, config)
 
     console = Console(enabled=not args.quiet)
-    console.header(run_id, alert, config.model, config.budget)
+    console.header(run_id, config.model, config.budget)
 
-    with ReactiveAgent(alert, config, trace_path, console, VERSION,
+    with ReactiveAgent(selector, config, trace_path, console, AGENT,
                        diagram=args.diagram) as agent:
         final = agent.execute()
 

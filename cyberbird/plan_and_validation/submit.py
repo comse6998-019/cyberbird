@@ -172,8 +172,6 @@ class Submission:
 
         if scanner == "bandit":
             still = self._bandit_hits(target, rule)
-        elif scanner == "semgrep":
-            still = self._semgrep_hits(target, rule)
         else:
             return False, f"no rescanner for {scanner!r}"
 
@@ -191,20 +189,6 @@ class Submission:
         except json.JSONDecodeError:
             raise RuntimeError(f"bandit produced no report: {proc.stderr.strip()}")
         return {r["line_number"] for r in report["results"] if r["test_id"] == rule}
-
-    def _semgrep_hits(self, target: Path, rule: str) -> set[int]:
-        configs = []
-        for yml in sorted(self.config.rules_dir.glob("*.yml")):
-            configs += ["--config", str(yml)]
-        proc = subprocess.run(
-            ["semgrep", "scan", *configs, "--json", "--metrics=off", "--quiet", str(target)],
-            capture_output=True, text=True, timeout=self.config.scan_timeout)
-        try:
-            report = json.loads(proc.stdout)
-        except json.JSONDecodeError:
-            raise RuntimeError(f"semgrep produced no report: {proc.stderr.strip()}")
-        return {r["start"]["line"] for r in report["results"]
-                if r["check_id"].endswith(rule)}
 
     @staticmethod
     def _lines(path: Path) -> list[str]:

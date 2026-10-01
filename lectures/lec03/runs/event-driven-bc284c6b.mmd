@@ -1,0 +1,70 @@
+sequenceDiagram
+    autonumber
+    participant P as Planner<br/>(model plans)
+    participant C as Controller<br/>(model decides)
+    participant R as Runtime<br/>(executes, refuses, checks)
+    participant W as Workspace<br/>(alert's own copy)
+    participant V as Validators<br/>(model judges)
+
+    Note over R: scan found 1, gate releases one at a time
+    Note over P,V: alert bc284c6b · bandit:B608 at testcode/BenchmarkTest00283.py:46
+    R->>P: AlertStarted
+    Note over P: 20s · in=486 out=826
+    P->>C: plan · 3 steps
+    Note over C: 22s · in=1578 out=102
+    C->>R: read_file(path=testcode/BenchmarkTest00283.py)
+    R->>W: read_file
+    C->>R: search(pattern=execute|query|cursor, glob=test…)
+    R->>W: search
+    W-->>R: 1 ''' 2 OWASP Benchmark for Python v0.1…
+    R-->>C: observation
+    W-->>R: testcode/BenchmarkTest00283.py:48: cur …
+    R-->>C: observation
+    Note over C: 25s · in=2470 out=82
+    C->>R: read_file(path=helpers/db_sqlite.py)
+    R->>W: read_file
+    C->>R: read_file(path=helpers/separate_request.py)
+    R->>W: read_file
+    W-->>R: 1 import sqlite3 2 import helpers.utils…
+    R-->>C: observation
+    W-->>R: 1 import flask 2 3 class request_wrappe…
+    R-->>C: observation
+    Note over C: 34s · in=3534 out=502
+    C->>R: edit(path=testcode/BenchmarkTest00283.py, ol…)
+    R->>W: edit
+    R-->>C: refused · ValueError: `old` must match exactly once, it…
+    Note over C: 41s · in=4068 out=306
+    C->>R: search(glob=testcode/BenchmarkTest00283.py, pa…)
+    R->>W: search
+    C->>R: read_file(end=53, path=testcode/BenchmarkTest0028…)
+    R->>W: read_file
+    W-->>R: testcode/BenchmarkTest00283.py:46: sql …
+    R-->>C: observation
+    W-->>R: 44 import helpers.db_sqlite 45 46 sql =…
+    R-->>C: observation
+    Note over C: 47s · in=4543 out=217
+    C->>R: edit(path=testcode/BenchmarkTest00283.py, ol…)
+    R->>W: edit
+    W-->>R: edited testcode/BenchmarkTest00283.py
+    R-->>C: observation
+    Note over C: 51s · in=4788 out=122
+    C->>R: edit(new= cur.execute(sql, (bar,)), old= cur…)
+    R->>W: edit
+    R-->>C: refused · ValueError: `old` must match exactly once, it…
+    Note over C: 61s · in=4942 out=106
+    C->>R: edit(new=cur.execute(sql, (bar,)), old=cur.e…)
+    R->>W: edit
+    W-->>R: edited testcode/BenchmarkTest00283.py
+    R-->>C: observation
+    Note over C: 65s · in=5076 out=101
+    C->>R: read_file(end=56, path=testcode/BenchmarkTest0028…)
+    R->>W: read_file
+    W-->>R: 40 map8812['keyB-8812'] = param 41 map8…
+    R-->>C: observation
+    Note over C: 75s · in=5396 out=531
+    C->>R: no tool call · submit
+    R->>V: judge through lens correctness
+    V-->>R: correctness · accepted (decided by stub)
+    Note over V: stub
+    Note over P,V: bc284c6b ACCEPTED
+    Note over P,V: RUN COMPLETED

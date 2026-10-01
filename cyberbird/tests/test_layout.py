@@ -1,4 +1,4 @@
-"""Both versions resolve the same repo layout, and the answers stay out of reach."""
+"""Both agents resolve the same repo layout, and the answers stay out of reach."""
 import pathlib
 import subprocess
 
@@ -12,9 +12,7 @@ from cyberbird.reactive.config import CONFIG as REACTIVE
                          ids=["reactive", "plan_and_validation"])
 def test_paths_resolve(config):
     assert (config.fixture / "testcode").is_dir()
-    assert config.findings.is_file()
     assert config.ground_truth.is_dir()
-    assert config.rules_dir.is_dir()
 
 
 @pytest.mark.parametrize("config", [REACTIVE, PLAN_AND_VALIDATION],
@@ -30,5 +28,5 @@ def _ignored(path):
 
 
 def test_new_runs_are_ignored_but_lecture_examples_are_not():
-    assert _ignored("runs/v1-new.jsonl")
-    assert not _ignored("lectures/lec03/runs/v4-example.jsonl")
+    assert _ignored("runs/reactive-new.jsonl")
+    assert not _ignored("lectures/lec03/runs/retry-example.jsonl")

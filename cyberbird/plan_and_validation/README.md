@@ -3,7 +3,7 @@
 Run it:
 
 ```sh
-cyberbird lec02 plan-and-validation --alert-id bc284c6b
+cyberbird plan-and-validation --alert-id bc284c6b
 ```
 
 `python -m cyberbird.plan_and_validation` runs the same thing.
@@ -11,8 +11,8 @@ cyberbird lec02 plan-and-validation --alert-id bc284c6b
 That is the lecture's worked example: Bandit `B608`, SQL injection at
 `testcode/BenchmarkTest00283.py:46`. It prints each turn as it happens.
 
-This package holds **two lecture segments in one graph**. V2 adds the planner
-and in-run revision; V3 adds the validator. Both are always compiled, so one run
+This package holds **two lecture segments in one graph**: the planner with
+in-run revision, and the validator. Both are always compiled, so one run
 shows both.
 
 ## Before you run anything in front of a room
@@ -45,17 +45,16 @@ Three things will bite, in order of likelihood.
    ollama list
    ```
 
-2. Confirm the alert queue exists. It should report 720 alerts.
+2. Confirm Bandit is installed. Every run starts by scanning the fixture with
+   it; the scan takes about two seconds.
 
    ```sh
-   cyberbird alerts --list
+   bandit --version
    ```
-
-If step 2 fails, rebuild it with `cyberbird intake`.
 
 ## Read the output
 
-Colour answers the question every version of the agent is built around: **who
+Colour answers the question every agent here is built around: **who
 decided this?**
 
 | Colour | Meaning |
@@ -84,8 +83,8 @@ Three roles now appear on `MODEL` lines — `planner`, `controller`, `validator`
 and they are the same model under different instructions, bound to different
 tools.
 
-A run ends with one of six terminal statuses: `accepted`, `rejected`,
-`unresolved`, `budget_exhausted`, `no_progress`, `error`.
+A run ends with one of five terminal statuses: `accepted`, `rejected`,
+`budget_exhausted`, `no_progress`, `error`.
 
 ## Watch for the two moments the segments are about
 
@@ -98,8 +97,8 @@ the runtime decides the *plan* is wrong rather than that the *run* is over:
   99.2s PLAN ↻   3 steps — revised
 ```
 
-In V1 that same condition ended the run with `no_progress`. A run gets exactly
-one revision; stall again afterwards and it terminates as V1 did.
+In the reactive agent that same condition ends the run with `no_progress`. A run
+gets exactly one revision; stall again afterwards and it terminates the same way.
 
 **The verdict.** `submit` can no longer accept. It runs the three mechanical
 checks and hands them to the validator, which is the only node that can end a
@@ -119,19 +118,21 @@ A clean rescan reaching a `rejected` verdict is the segment's whole argument.
 Select one alert by id, or by location:
 
 ```sh
-cyberbird lec02 plan-and-validation --alert-id be043aa4
-cyberbird lec02 plan-and-validation --location testcode/BenchmarkTest00283.py:46
+cyberbird plan-and-validation --alert-id be043aa4
+cyberbird plan-and-validation --location testcode/BenchmarkTest00283.py:46
 ```
 
-Browse the queue first if you want a different weakness:
+Browse the alerts first if you want a different weakness. The first command
+scans the fixture and writes `runs/findings.json` without starting an agent:
 
 ```sh
-cyberbird alerts --category weakrand
+python -m cyberbird.plan_and_validation.scan
+python -m cyberbird.plan_and_validation.cli --category weakrand
 ```
 
-Three that worked for V1, for a live demo:
+Three that worked for the reactive agent, for a live demo:
 
-| Alert | Weakness | V1 calls |
+| Alert | Weakness | Reactive agent's calls |
 |---|---|---|
 | `bc284c6b` | SQL injection — the worked example | 5 |
 | `be043aa4` | Weak random — needs two edits in different places | 4 |
@@ -158,23 +159,23 @@ is what "checked before the call, not after" means. All three model nodes make
 that check, so the planner is stopped too.
 
 ```sh
-cyberbird lec02 plan-and-validation --alert-id bc284c6b --budget 0
+cyberbird plan-and-validation --alert-id bc284c6b --budget 0
 ```
 
 ## Read the trace afterwards
 
 The console is a summary. The trace is the record, one JSON event per line, at
-`runs/v23-<alert_id>.jsonl`.
+`runs/plan-and-validation-<alert_id>.jsonl`.
 
 ```sh
-cyberbird trace runs/v23-bc284c6b.jsonl --format summary
+python -m cyberbird.plan_and_validation.trajectory runs/plan-and-validation-bc284c6b.jsonl --format summary
 ```
 
 That reports model calls by role, how many plan revisions happened, and who
 decided the verdict. For the sequence diagram:
 
 ```sh
-cyberbird trace runs/v23-bc284c6b.jsonl --format mermaid
+python -m cyberbird.plan_and_validation.trajectory runs/plan-and-validation-bc284c6b.jsonl --format mermaid
 ```
 
 To show that a run reproduces, run it twice to different files and compare.
@@ -188,20 +189,25 @@ print(compare('/tmp/a.jsonl', '/tmp/b.jsonl'))"
 
 ## What the graph does
 
-Five nodes. `plan`, `controller` and `validate` are where a model decides;
-`tools` and `submit` are runtime work.
+Seven nodes. `plan`, `controller` and `validate` are where a model decides;
+`scan`, `normalize`, `tools` and `submit` are runtime work.
 
 ```
-START → plan → controller → tools ─┬→ controller
-                  │                └→ plan       (nothing new came back)
-                  ↓
-               submit ─┬→ validate → END
-                       └→ controller             (checks failed)
+START → scan → normalize → plan → controller → tools ─┬→ controller
+                                     │                └→ plan       (nothing new came back)
+                                     ↓
+                                  submit ─┬→ validate → END
+                                          └→ controller             (checks failed)
 ```
 
-Two lines differ from V1, and everything else serves them.
+`scan` and `normalize` run once, before any model call: Bandit over the pinned
+fixture, then its report turned into `runs/findings.json` and the one alert
+this run is about. The workspace is created only after `normalize` has picked
+the alert.
 
-**`tools → controller` is no longer unconditional.** In V1 that single edge is
+Two lines differ from the reactive agent, and everything else serves them.
+
+**`tools → controller` is no longer unconditional.** In the reactive agent that single edge is
 what makes the agent reactive, and it had one destination. Here it chooses, and
 the second destination is the planner.
 
@@ -220,11 +226,11 @@ supports tool calling.
 
 **If a run stops with `no_progress`**, it stalled, was given a revised plan, and
 stalled again. The trace records `after_replan` on that event, which is how you
-tell that case from a V1-style stall.
+tell that case from a plain stall.
 
 **If the plan is empty**, the planner returned no `propose_plan` call. That is
-not fatal — the controller works without a plan, exactly as V1 does — but it
-means the V2 segment has nothing to show, so re-run it.
+not fatal — the controller works without a plan, exactly as the reactive agent does — but
+it means the planning segment has nothing to show, so re-run it.
 
 **If the validator's reason is "the validator returned no decision"**, the model
 emitted no `decide` call. The trace records `decided_by: runtime` for that, so it

@@ -1,28 +1,32 @@
 """The reactive agent: one run of one alert, start to terminal status.
 
-    with ReactiveAgent(alert, config, trace_path, console) as agent:
+    with ReactiveAgent({"alert_id": "bc284c6b"}, config, trace_path, console) as agent:
         final = agent.execute()
 
 A run is the thing with a lifetime, which is why this is the context manager and
 the graph is not. It owns two resources:
 
-    the workspace   a ~11 MB copy of the fixture, made on entry
+    the workspace   a ~11 MB copy of the fixture, made when `normalize` asks
     the trace       a file handle, opened on entry and closed on exit
+
+The workspace cannot be made on entry: it withholds every benchmark case but the
+alert's own, and the alert is not known until the graph has scanned the fixture.
 
 Both end together. Before this existed, every run left its workspace behind:
 eighteen of them, 198 MB, in one afternoon.
 
 A workspace is kept when the run did not end in `accepted`, and its path is
 printed. A run that failed is the one worth opening; a run that succeeded is
-11 MB nobody will read again. V3 depends on this, because a deliberately
+11 MB nobody will read again. The validator depends on this, because a deliberately
 rejected attempt has to survive for inspection.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
+from cyberbird.reactive.cli import run_name
 from cyberbird.reactive.config import CONFIG, Config
-from cyberbird.reactive.graph import build_graph, opening_messages
+from cyberbird.reactive.graph import build_graph
 from cyberbird.reactive.state import initial_state
 from cyberbird.reactive.trace import TerminalStatus, Trace, read_events
 from cyberbird.reactive.trajectory import to_mermaid
@@ -37,14 +41,15 @@ class ReactiveAgent:
     The graph structure lives in `AgentDAG`; this is the thing that runs it.
     """
 
-    def __init__(self, alert: dict, config: Config = CONFIG,
+    def __init__(self, selector: dict, config: Config = CONFIG,
                  trace_path: Path | None = None, console=None,
-                 version: str = "v1", keep_unless_accepted: bool = True,
+                 agent: str = "reactive", keep_unless_accepted: bool = True,
                  diagram: str = "mermaid"):
-        self.alert = alert
+        self.selector = selector
+        self.alert: dict | None = None
         self.config = config
-        self.version = version
-        self.run_id = f"{version}-{alert['alert_id']}"
+        self.agent = agent
+        self.run_id = run_name(agent, selector)
         self.trace_path = Path(trace_path) if trace_path else (
             config.runs_dir / f"{self.run_id}.jsonl")
         self.console = console
@@ -59,13 +64,22 @@ class ReactiveAgent:
         self.diagram_path: Path | None = None
 
     def __enter__(self) -> "ReactiveAgent":
-        # The answers are withheld while the agent works and put back on exit.
-        self._ws = AgentWorkspace(self.config, case=Path(self.alert["file"]).stem)
-        self.workspace = self._stack.enter_context(self._ws)
         self.trace = Trace(self.run_id, self.trace_path,
                            on_event=self.console.event if self.console else None,
                            on_close=self._emit_sequence_diagram)
         return self
+
+    def _open_workspace(self, alert: dict) -> Path:
+        """Called by `normalize` once the alert is known. Owned here, not there.
+
+        The answers are withheld while the agent works and put back on exit.
+        """
+        if self._ws is not None:
+            raise RuntimeError("this run already has a workspace")
+        self.alert = alert
+        self._ws = AgentWorkspace(self.config, case=Path(alert["file"]).stem)
+        self.workspace = self._stack.enter_context(self._ws)
+        return self.workspace
 
     def _emit_sequence_diagram(self, trace: Trace) -> None:
         """Called by Trace just before it closes: save and draw what the run did.
@@ -104,15 +118,16 @@ class ReactiveAgent:
 
     def execute(self) -> dict:
         """Run the graph to a terminal status."""
-        if self.trace is None or self.workspace is None:
+        if self.trace is None:
             raise RuntimeError("use ReactiveAgent as a context manager")
 
-        state = initial_state(self.alert, str(self.workspace), self.config)
-        state["messages"] = opening_messages(self.alert)
+        state = initial_state(self.selector, self.config)
+        graph = build_graph(self.trace, self.config, self.console,
+                            open_workspace=self._open_workspace)
 
         # Each model call costs several supersteps, so the recursion limit
         # tracks the budget rather than being a second number to keep in step.
-        self.state = build_graph(self.trace, self.config, self.console).invoke(
+        self.state = graph.invoke(
             state, {"recursion_limit": max(4, self.config.budget * 4)})
         self.trace.terminal(self.state["status"])
         return self.state

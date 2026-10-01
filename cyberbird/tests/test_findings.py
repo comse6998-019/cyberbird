@@ -1,7 +1,6 @@
-"""Acceptance checks against the real, built findings.json.
+"""Acceptance checks against a real scan of the fixture.
 
-Unlike test_normalize.py these depend on the fixture and the scan actually
-having run. They pin the worked example the lecture notes use throughout.
+Unlike test_normalize.py these run Bandit (once, via the `scanned` fixture). They pin the worked example the lecture notes use throughout.
 """
 import json
 import pathlib
@@ -9,15 +8,12 @@ import pathlib
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
-FINDINGS = ROOT / "data" / "findings.json"
-
-pytestmark = pytest.mark.skipif(
-    not FINDINGS.exists(), reason="run `python -m intake.build_findings` first")
+APP = ROOT / "fixtures" / "owasp-benchmark-python"
 
 
 @pytest.fixture(scope="module")
-def doc():
-    return json.loads(FINDINGS.read_text())
+def doc(scanned):
+    return scanned
 
 
 def test_worked_example_is_present(doc):
@@ -43,8 +39,8 @@ def test_answer_key_is_not_reachable_from_the_fixture():
     for name in ("expectedresults-0.1.csv",
                  "results/BenchmarkPython-Bandit.sarif",
                  "results/Benchmark-Bearer-v1.51.1.json"):
-        assert not (ROOT / "fixture" / name).exists(), f"{name} still readable in fixture/"
-        assert (ROOT / "data" / "ground-truth" / pathlib.Path(name).name).exists()
+        assert not (APP / "src" / name).exists(), f"{name} still readable in the fixture"
+        assert (APP / "ground-truth" / pathlib.Path(name).name).exists()
 
 
 def test_every_alert_carries_the_full_contract(doc):
@@ -70,8 +66,8 @@ def test_counts_are_internally_consistent(doc):
 
 def test_builder_writes_where_it_is_told(tmp_path):
     """`main` takes its own argv, so a wrapper can forward arguments to it."""
-    from intake import build_findings
+    from cyberbird.reactive import scan
 
     out = tmp_path / "findings.json"
-    assert build_findings.main(["-o", str(out)]) == 0
-    assert json.loads(out.read_text())["totals"]["alerts"] == 720
+    assert scan.main(["-o", str(out)]) == 0
+    assert json.loads(out.read_text())["totals"]["alerts"] == 536

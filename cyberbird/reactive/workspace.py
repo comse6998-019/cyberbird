@@ -1,36 +1,10 @@
-"""A disposable copy of the fixture, with the benchmark's answers withheld.
+"""Disposable fixture workspaces with benchmark answers temporarily withheld.
 
-    with AgentWorkspace(config, case="BenchmarkTest00283") as ws:
-        ...
+When case isolation is enabled, sibling cases and templates are moved aside to
+prevent copying solutions; helpers remain available. Files are restored on exit
+before the workspace is kept or removed.
 
-`AgentWorkspace` owns the lifetime. It copies the fixture on entry, moves the
-answer files aside, and on exit puts them back before deciding whether to remove
-the tree at all.
-
-WHY THE ANSWERS ARE WITHHELD
-OWASP Benchmark ships each weakness twice: a vulnerable case and a safe twin
-implementing the same endpoint correctly. 758 of its 1,230 cases are safe ones.
-So the correct patch for any alert sits in a sibling file, one grep away, and an
-agent that finds it has pattern-matched a neighbour rather than reasoned about
-the code. It looks like investigation in the trace and is not.
-
-Measured on the worked alert: with siblings present the agent accepted in five
-model calls; with them withheld it diagnosed the bug correctly in words and then
-spent its whole budget hunting for an example to copy, and produced no patch.
-
-WHY MOVED, NOT DELETED
-Withholding is a loan, not a demolition. Files go to a sibling directory and
-come back on exit, which means the tree a human opens after a failed run is
-complete, the withheld set is inspectable rather than inferred, and nothing here
-can destroy anything even if pointed at a tree that is not a copy.
-
-`helpers/` is deliberately never withheld. Following a value into
-`helpers/separate_request.py` is the genuine investigation the lecture wants,
-and it is not where the answers live.
-
-`resolve` is the agent's security boundary. Every tool calls it before touching
-disk. It is module-level and public on purpose: a boundary every caller must
-pass through should not look private.
+All agent tools use `resolve` to restrict file access to the workspace root.
 """
 from __future__ import annotations
 

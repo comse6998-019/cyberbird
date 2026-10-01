@@ -1,4 +1,4 @@
-"""The state record every version shares, and its reducers.
+"""The state record every agent shares, and its reducers.
 
 This is the schema handed to `StateGraph(AgentState)`.
 
@@ -9,18 +9,21 @@ combined by calling it. Reducers are LangGraph's to call, never yours.
 
 Fields fall into two lifetimes here:
 
-    identity    set once, never changed     alert, repo, commit, workspace
+    identity    set once, never changed     selector, repo, commit
+                set once, by `normalize`    scan_report, alert, workspace
     run-local   built up as the run goes    plan, failed_step, replanned_at,
                                             messages, observations, candidate_patch,
                                             checks, validation, usage, model_calls,
                                             status
 
-A field arrives with the node that fills it, so the diff between two versions
-shows one change, not a field that was always there waiting. V2 brings `plan`
-and `failed_step`, with the planner and the router that sends work back to it;
-V3 brings `checks` and `validation`, with the validator; V4 brings `reflections`
-and `attempt` along with the machinery to clear run-local fields between
-attempts.
+`alert` and `workspace` start empty. The run begins from a *selector* (an alert
+id or a FILE:LINE), and only the normalize node, having scanned the fixture,
+can turn that into an alert. The workspace waits for the alert because it
+withholds every benchmark case except the alert's own.
+
+A field exists only when a node here fills it. `plan` and `failed_step` belong
+to the planner and the router that sends work back to it; `checks` and
+`validation` belong to the validator.
 
 `replanned_at` is the one field here that exists because of a reducer rather
 than because of a node. `observations` accumulates with `operator.add` and so
@@ -38,7 +41,7 @@ cleared at all, so the cost has to be carried somewhere else.
 
 It doubles as the replan budget. `replanned_at == 0` means the planner has only
 ever run at START, so a run gets exactly one revision; stall again after that and
-the terminal status is `no_progress`, exactly as in V1.
+the terminal status is `no_progress`, exactly as in the reactive agent.
 """
 from __future__ import annotations
 
@@ -72,10 +75,14 @@ def add_usage(existing: Usage | None, update: Usage | dict | None) -> Usage:
 
 class AgentState(TypedDict, total=False):
     # identity, set once
-    alert: dict
+    selector: dict
     repo: str
     commit: str
-    workspace: str
+
+    # set once, by the scan and normalize nodes
+    scan_report: str | None
+    alert: dict | None
+    workspace: str | None
 
     # built up as the run goes
     plan: list | None
@@ -91,24 +98,27 @@ class AgentState(TypedDict, total=False):
     status: str
 
 
-def initial_state(alert: dict, workspace: str,
-                  config: Config = CONFIG) -> AgentState:
-    """A fresh run on one alert.
+def initial_state(selector: dict, config: Config = CONFIG) -> AgentState:
+    """A fresh run, before anything has been scanned.
 
     Called before the graph starts, so no reducer is involved: this dict becomes
     the starting state directly.
 
-    `workspace` is required, not defaulted. Creating one here would produce a
-    tree nobody owns and nobody cleans up — and, worse, one built without
-    `case=`, so every sibling benchmark case would be present and the agent
-    could grep the answer out of a safe twin. The caller that makes the
-    workspace is the caller that must remove it.
+    There is no workspace here, and there must not be. Creating one would
+    produce a tree nobody owns and nobody cleans up — and, worse, one built
+    without `case=`, so every sibling benchmark case would be present and the
+    agent could grep the answer out of a safe twin. `normalize` asks the run
+    for one once it knows the alert; the run that makes it is the run that
+    removes it.
     """
     return AgentState(
-        alert=alert,
-        repo=config.fixture.name,
+        selector=selector,
+        # fixture is fixtures/<app>/src, so the app's name is its parent's
+        repo=config.fixture.parent.name,
         commit=PINNED_COMMIT,
-        workspace=workspace,
+        scan_report=None,
+        alert=None,
+        workspace=None,
         plan=None,
         failed_step=None,
         replanned_at=0,
